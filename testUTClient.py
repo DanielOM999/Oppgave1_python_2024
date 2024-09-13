@@ -30,10 +30,13 @@ def send_udp_video():
 
         frame = imutils.resize(frame, width=400)
         encoded, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        message = base64.b64encode(buffer)
+        message = base64.b64encode(buffer).decode('ascii')
+        enName = base64.b64encode(nickname.encode()).decode('ascii')
+
+        combined_message = f"{enName}|{message}"
 
         try:
-            UDPClient.sendto(message, (host_ip, udp_port))
+            UDPClient.sendto(combined_message.encode('ascii'), (host_ip, udp_port))
         except Exception as e:
             print(f"Error sending frame: {e}")
             break
@@ -51,11 +54,17 @@ def receive_udp_video(self):
     global fps, st, frame_to_count, cnt
     while True:
         try:
-            packet, _ = UDPClient.recvfrom(BUFFERSIZE)
-            if packet == b"END":
+            packet_data, _ = UDPClient.recvfrom(BUFFERSIZE)
+            if packet_data == b"END":
                 print("Video stream ended.")
-                break
-            data = base64.b64decode(packet)
+                self.after(0, self.remove_image)
+            combined_message = packet_data.decode('ascii')
+            enName, message = combined_message.split('|')
+
+            name = base64.b64decode(enName).decode('ascii')
+            print(name)
+            
+            data = base64.b64decode(message)
             npdata = np.frombuffer(data, dtype=np.uint8)
             frame = cv2.imdecode(npdata, 1)
             frame = cv2.putText(frame, "FPS:" + str(fps), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -78,7 +87,7 @@ class ChatApp(ctk.CTk):
         super().__init__()
 
         self.title("Socket Client Chat")
-        self.geometry("400x500")
+        self.geometry("400x520")
 
         self.chat_box = ctk.CTkTextbox(self, width=380, height=380)
         self.chat_box.grid(row=0, column=0, padx=10, pady=10)
@@ -93,8 +102,8 @@ class ChatApp(ctk.CTk):
         self.toggle_video_button = ctk.CTkButton(self, text="Toggle Video", command=self.toggle_video)
         self.toggle_video_button.grid(row=2, column=0, padx=10, pady=10)
 
-        self.image_label = ctk.CTkLabel(self, image=None, text="")
-        self.image_label.grid(row=3, column=0, padx=10, pady=10)
+        self.image_label = ctk.CTkLabel(self, image=None, text="", width=400, height=225)
+        self.image_label.grid(row=0, column=3, padx=10, pady=10)
 
         self.recive_thread = threading.Thread(target=self.TCPReceive)
         self.recive_thread.daemon = True
@@ -112,11 +121,17 @@ class ChatApp(ctk.CTk):
         self.chat_box.see("end")
     
     def display_image(self, frame):
+        self.geometry("850x520")
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image_pil = Image.fromarray(frame_rgb)
-        image_ctk = ctk.CTkImage(dark_image=image_pil)
+        image_ctk = ctk.CTkImage(dark_image=image_pil, size=(400, 225))
         self.image_label.configure(image=image_ctk)
         self.image_label.image = image_ctk
+    
+    def remove_image(self):
+        self.geometry("400x520")
+        self.image_label.configure(image=None)
+        self.image_label.image = None
 
     def TCPReceive(self):
         while True:
