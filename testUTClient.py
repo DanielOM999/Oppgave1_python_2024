@@ -7,6 +7,7 @@ host_ip = "localhost"
 tcp_port = 3000
 udp_port = 3001
 BUFFERSIZE = 65536
+clients = []
 
 nickname = input("Enter your name:\n")
 
@@ -47,7 +48,10 @@ def send_udp_video():
             break
 
         time.sleep(0.03)
-    UDPClient.sendto(b"END", (host_ip, udp_port))
+    enName = base64.b64encode(nickname.encode()).decode('ascii')
+    cmE = base64.b64encode("END".encode()).decode('ascii')
+    combined_message = f"{enName}|{cmE}"
+    UDPClient.sendto(combined_message.encode('ascii'), (host_ip, udp_port))
     print("Video streaming stopped.")
 
 def receive_udp_video(self):
@@ -55,21 +59,20 @@ def receive_udp_video(self):
     while True:
         try:
             packet_data, _ = UDPClient.recvfrom(BUFFERSIZE)
-            if packet_data == b"END":
-                print("Video stream ended.")
-                self.after(0, self.remove_image)
             combined_message = packet_data.decode('ascii')
             enName, message = combined_message.split('|')
 
             name = base64.b64decode(enName).decode('ascii')
-            print(name)
-            
             data = base64.b64decode(message)
+            
+            if data == b"END":
+                print(f"Video {name} ended.")
+                self.after(0, self.remove_image, name)
+            
             npdata = np.frombuffer(data, dtype=np.uint8)
             frame = cv2.imdecode(npdata, 1)
             frame = cv2.putText(frame, "FPS:" + str(fps), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            # cv2.imshow("Receiving Video", frame)
-            self.after(0, self.display_image, frame)
+            self.after(0, self.display_image, frame, name)
             
             if cnt == frame_to_count:
                 fps = round(frame_to_count / (time.time() - st))
@@ -89,6 +92,8 @@ class ChatApp(ctk.CTk):
         self.title("Socket Client Chat")
         self.geometry("400x520")
 
+        self.client_labels = {}
+
         self.chat_box = ctk.CTkTextbox(self, width=380, height=380)
         self.chat_box.grid(row=0, column=0, padx=10, pady=10)
         self.chat_box.configure(state="disabled")
@@ -102,9 +107,6 @@ class ChatApp(ctk.CTk):
         self.toggle_video_button = ctk.CTkButton(self, text="Toggle Video", command=self.toggle_video)
         self.toggle_video_button.grid(row=2, column=0, padx=10, pady=10)
 
-        self.image_label = ctk.CTkLabel(self, image=None, text="", width=400, height=225)
-        self.image_label.grid(row=0, column=3, padx=10, pady=10)
-
         self.recive_thread = threading.Thread(target=self.TCPReceive)
         self.recive_thread.daemon = True
         self.recive_thread.start()
@@ -113,6 +115,11 @@ class ChatApp(ctk.CTk):
         self.udp_receive_thread.daemon = True
         self.udp_receive_thread.start()
 
+        self.window_size_thread = threading.Thread(target=self.adjust_window_width)
+        self.window_size_thread.daemon = True
+        self.window_size_thread.start()
+
+
 
     def display_message(self, message):
         self.chat_box.configure(state="normal")
@@ -120,18 +127,31 @@ class ChatApp(ctk.CTk):
         self.chat_box.configure(state="disabled")
         self.chat_box.see("end")
     
-    def display_image(self, frame):
-        self.geometry("850x520")
+    def display_image(self, frame, name):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image_pil = Image.fromarray(frame_rgb)
         image_ctk = ctk.CTkImage(dark_image=image_pil, size=(400, 225))
-        self.image_label.configure(image=image_ctk)
-        self.image_label.image = image_ctk
+        if name not in self.client_labels:
+            label = ctk.CTkLabel(self, image=image_ctk, text=f"{name}'s Stream")
+            label.grid(row=len(self.client_labels), column=3, padx=10, pady=1)
+            self.client_labels[name] = label
+        else:
+            label = self.client_labels[name]
+            label.configure(image=image_ctk)
+
+        label.image = image_ctk
     
-    def remove_image(self):
-        self.geometry("400x520")
-        self.image_label.configure(image=None)
-        self.image_label.image = None
+    def remove_image(self, name):
+        if name in self.client_labels:
+            self.client_labels[name].destroy()
+            del self.client_labels[name]
+            print(self.client_labels)
+
+    def adjust_window_width(self):
+        while True:
+            if self.client_labels:
+                self.geometry("820x520")
+            time.sleep(2)
 
     def TCPReceive(self):
         while True:
