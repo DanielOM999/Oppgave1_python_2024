@@ -11,11 +11,11 @@ To run these projects, make sure you have **Python 3** installed. Additional dep
 1. **Clone the Repository**: Start by cloning this repository to your local machine:
    ```bash
    git clone https://github.com/yourusername/your-repo-name.git
-  `
+   
 2. **Navigate to a Project Folder**: Go to the folder of the project you want to run:
-  ```bash
-  cd project-folder-name
-  ```
+     ```bash
+     cd project-folder-name
+     ```
 
 3. **Run the Python Script**: Execute the script using Python:
     ```bash
